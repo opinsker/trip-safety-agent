@@ -1,0 +1,21 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments & Secrets
+.env
+.venv/
+venv/
+ENV/
+*.pem
+*.key
+
+# Data files (large datasets)
+data/world_cities.json
+
+# IDEs & OS
+.vscode/
+.idea/
+.DS_Store
+*.log

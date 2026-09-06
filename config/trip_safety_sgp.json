@@ -1,0 +1,40 @@
+{
+  "agent_id": "trip-safety-specialist",
+  "version": "1.0.0",
+  "domain": "EXPEDITION_AND_TRAVEL_SAFETY",
+  "policies": [
+    {
+      "rule_id": "SGP-DANGER-ZONE",
+      "rule_name": "ACTIVE_CONFLICT_AND_SECURITY_HAZARD_PROHIBITION",
+      "severity": "CRITICAL",
+      "action": "VETO",
+      "source": "https://travel.state.gov/_res/rss/TAsTWs.xml",
+      "critical_indicators": ["level 4", "do not travel"]
+    },
+    {
+      "rule_id": "SGP-HYDRO-FLOOD",
+      "rule_name": "REGIONAL_WADI_FLASH_FLOOD_PROHIBITION",
+      "severity": "CRITICAL",
+      "action": "VETO",
+      "source": "<YOUR_REGIONAL_HYDROLOGICAL_ALERTS_FEED_URL>",
+      "hazard_categories": ["flash flood", "flood warning", "inundation"],
+      "min_severity": "WARNING"
+    },
+    {
+      "rule_id": "SGP-CANYON-RESTRICTION",
+      "rule_name": "FLASH_FLOOD_GORGE_ENTER_RESTRICTION",
+      "severity": "HIGH",
+      "action": "REROUTE",
+      "source": "<YOUR_REGIONAL_HYDROLOGICAL_ALERTS_FEED_URL>",
+      "hazard_categories": ["flash flood", "heavy rain", "gorge flood"]
+    },
+    {
+      "rule_id": "SGP-WMO-SEVERE-WEATHER",
+      "rule_name": "WMO_GLOBAL_SEVERE_WEATHER_PROHIBITION",
+      "severity": "CRITICAL",
+      "action": "VETO",
+      "source": "https://severeweather.wmo.int/json/wmo_all.json",
+      "min_severity_level": 3
+    }
+  ]
+}

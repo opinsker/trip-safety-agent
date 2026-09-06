@@ -1,0 +1,7 @@
+{
+  "paris": { "name": "Paris", "countries": ["France"] },
+  "cairo": { "name": "Cairo", "countries": ["Egypt"] },
+  "tokyo": { "name": "Tokyo", "countries": ["Japan"] },
+  "tehran": { "name": "Tehran", "countries": ["Iran"] },
+  "jerusalem": { "name": "Jerusalem", "countries": ["Israel"] }
+}
