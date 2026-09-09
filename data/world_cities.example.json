@@ -3,5 +3,7 @@
   "cairo": { "name": "Cairo", "countries": ["Egypt"] },
   "tokyo": { "name": "Tokyo", "countries": ["Japan"] },
   "tehran": { "name": "Tehran", "countries": ["Iran"] },
+  "damascus": { "name": "Damascus", "countries": ["Syria"] },
+  "reykjavik": { "name": "Reykjavik", "countries": ["Iceland"] },
   "jerusalem": { "name": "Jerusalem", "countries": ["Israel"] }
 }

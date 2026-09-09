@@ -2,12 +2,20 @@
 Core Implementation of the Trip Safety Specialist Agent.
 """
 
+import ipaddress
 import json
 import os
 import re
 import ssl
+import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET
+
+try:
+    import defusedxml.ElementTree as ET
+except ImportError:
+    import xml.etree.ElementTree as ET
+
+MAX_FEED_BYTES = 2 * 1024 * 1024  # 2 MB max payload size limit
 
 
 class TripSafetyAgentEngine:
@@ -20,6 +28,37 @@ class TripSafetyAgentEngine:
         self.gateway_name = os.getenv("AGENT_GATEWAY_NAME", "<YOUR_AGENT_GATEWAY_PROXY>")
         self.reasoning_engine_id = os.getenv("REASONING_ENGINE_ID", "<YOUR_REASONING_ENGINE_ID>")
         self.tracer = None
+
+    @staticmethod
+    def _get_ssl_context() -> ssl.SSLContext:
+        """Returns a verified SSL context using certifi CA bundle if available."""
+        try:
+            import certifi
+            return ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            return ssl.create_default_context()
+
+    @staticmethod
+    def _is_safe_url(url: str) -> bool:
+        """Validates outbound HTTP URLs against SSRF and private network attacks."""
+        if not url or not isinstance(url, str):
+            return False
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme != "https":
+            return False
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        blocked_hosts = {"localhost", "127.0.0.1", "::1", "169.254.169.254", "metadata.google.internal"}
+        if hostname.lower() in blocked_hosts:
+            return False
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if ip.is_private or ip.is_loopback or ip.is_link_local:
+                return False
+        except ValueError:
+            pass
+        return True
 
     def set_up(self):
         """Loads policies and initializes OpenTelemetry exporter."""
@@ -83,10 +122,10 @@ class TripSafetyAgentEngine:
         root = None
 
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            ctx = ssl._create_unverified_context()
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            ctx = self._get_ssl_context()
             with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
-                root = ET.fromstring(resp.read())
+                root = ET.fromstring(resp.read(MAX_FEED_BYTES))
         except Exception:
             root = None
 
@@ -135,12 +174,12 @@ class TripSafetyAgentEngine:
         active_alerts = []
         has_flash_flood = False
 
-        if url and url.startswith("http"):
+        if url and self._is_safe_url(url):
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-                ctx = ssl._create_unverified_context()
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+                ctx = self._get_ssl_context()
                 with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:
-                    data = resp.read()
+                    data = resp.read(MAX_FEED_BYTES)
                     try:
                         root = ET.fromstring(data)
                         for alert_elem in root.findall(".//info") or root.findall(".//item"):
@@ -173,23 +212,29 @@ class TripSafetyAgentEngine:
         })
         url = policy["source"]
         items = []
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            ctx = ssl._create_unverified_context()
-            with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:
-                items = json.loads(resp.read().decode("utf-8")).get("items", [])
-        except Exception:
-            items = []
+        if self._is_safe_url(url):
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+                ctx = self._get_ssl_context()
+                with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:
+                    items = json.loads(resp.read(MAX_FEED_BYTES).decode("utf-8")).get("items", [])
+            except Exception:
+                items = []
 
-        stop_words = {"plan", "trip", "travel", "expedition", "hike", "route", "destination", "today", "tomorrow"}
+        stop_words = {
+            "plan", "trip", "travel", "expedition", "hike", "route", "destination",
+            "today", "tomorrow", "through", "with", "around", "near", "from", "into",
+            "slot", "canyon", "solo", "alone", "warnings", "warning", "flash", "flood", "floods"
+        }
         tokens = [w.strip() for w in re.split(r"[,/\s\-]+", query_text.lower()) if len(w.strip()) > 3 and w.strip() not in stop_words]
 
         matches = []
-        for it in items:
-            area = it.get("areaDesc", "").lower()
-            h_line = it.get("headline", "").lower()
-            if any(tok in area or tok in h_line for tok in tokens):
-                matches.append((it.get("s", 0), it))
+        if tokens:
+            for it in items:
+                area = it.get("areaDesc", "").lower()
+                h_line = it.get("headline", "").lower()
+                if any(tok in area or tok in h_line for tok in tokens):
+                    matches.append((it.get("s", 0), it))
 
         matches.sort(key=lambda x: x[0], reverse=True)
         has_severe_weather = False
@@ -277,7 +322,9 @@ class TripSafetyAgentEngine:
                 with self.tracer.start_as_current_span("TripSafetyAgentEngine.query") as span:
                     span.set_attribute("reasoning_engine_id", self.reasoning_engine_id)
                     span.set_attribute("agent_name", "trip-safety-specialist")
-                    span.set_attribute("input_text", input_text)
+                    # Sanitize prompt attribute to prevent PII exposure in traces
+                    sanitized_input = (input_text[:128] + "...") if len(input_text) > 128 else input_text
+                    span.set_attribute("input_text", sanitized_input)
                     span.set_attribute("policy_status", "VIOLATION_DETECTED" if "VETO" in result else "CRITERIA_SATISFIED")
             except Exception:
                 pass

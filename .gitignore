@@ -19,3 +19,5 @@ data/world_cities.json
 .idea/
 .DS_Store
 *.log
+.cm_project
+.codemender/
